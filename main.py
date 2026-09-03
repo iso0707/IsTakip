@@ -62,6 +62,12 @@ GIRIS_METIN = (0.08, 0.09, 0.11, 1)
 YESIL = (0.20, 0.65, 0.30, 1)
 KIRMIZI = (0.85, 0.20, 0.20, 1)
 
+GIDER_IKONLARI = {
+    "Yakıt": "⛽",
+    "Malzeme Özel": "🧰",
+    "Gıda": "🍔"
+}
+
 
 # =========================================================
 # JSON
@@ -230,6 +236,44 @@ def buton(
 
 
 # =========================================================
+# KIRMIZI KUTU
+# =========================================================
+
+class KirmiziKutu(Label):
+
+    def __init__(
+        self,
+        **kwargs
+    ):
+
+        super().__init__(**kwargs)
+
+        with self.canvas.before:
+
+            self._renk = Color(*KIRMIZI)
+
+            self._arka = RoundedRectangle(
+                pos=self.pos,
+                size=self.size,
+                radius=[dp(14)]
+            )
+
+        self.bind(
+            pos=self._guncelle,
+            size=self._guncelle
+        )
+
+    def _guncelle(self, *args):
+
+        self._arka.pos = self.pos
+        self._arka.size = self.size
+
+    def renk_ayarla(self, renk):
+
+        self._renk.rgba = renk
+
+
+# =========================================================
 # GİRİŞ
 # =========================================================
 
@@ -279,6 +323,48 @@ def baslik(
     )
 
 
+def etiketli_alan(
+    yazi,
+    alan
+):
+
+    kutu = BoxLayout(
+        orientation="vertical",
+        spacing=dp(2),
+        size_hint_y=None
+    )
+
+    kutu.bind(
+        minimum_height=
+        kutu.setter("height")
+    )
+
+    etiket = Label(
+        text=yazi,
+        font_size=14,
+        color=SOLUK,
+        bold=True,
+        size_hint_y=None,
+        height=dp(20),
+        halign="left",
+        valign="middle"
+    )
+
+    etiket.bind(
+        size=lambda obj, val:
+        setattr(
+            obj,
+            "text_size",
+            val
+        )
+    )
+
+    kutu.add_widget(etiket)
+    kutu.add_widget(alan)
+
+    return kutu
+
+
 # =========================================================
 # HESAPLAMA
 # =========================================================
@@ -307,7 +393,11 @@ def is_durumu(is_):
     )
 
 
-def bu_ay_mi(tarih):
+def bu_ay_mi(
+    tarih,
+    yil=None,
+    ay=None
+):
 
     try:
 
@@ -316,19 +406,27 @@ def bu_ay_mi(tarih):
             "%d.%m.%Y %H:%M"
         )
 
-        simdi = datetime.now()
+        if yil is None or ay is None:
+
+            simdi = datetime.now()
+
+            yil = simdi.year
+            ay = simdi.month
 
         return (
-            tarih.month == simdi.month
+            tarih.month == ay
             and
-            tarih.year == simdi.year
+            tarih.year == yil
         )
 
     except Exception:
         return False
 
 
-def hesaplar():
+def hesaplar(
+    yil=None,
+    ay=None
+):
 
     isler = oku(
         ISLER_DOSYASI
@@ -337,10 +435,12 @@ def hesaplar():
     ay_gelir = 0
     ay_gider = 0
     ay_malzeme = 0
+    ay_iscilik = 0
 
     toplam_gelir = 0
     toplam_gider = 0
     toplam_malzeme_para = 0
+    toplam_iscilik = 0
 
     for is_ in isler:
 
@@ -356,17 +456,25 @@ def hesaplar():
             is_
         )
 
+        iscilik = para(
+            is_.get("iscilik", 0)
+        )
+
         toplam_gelir += gelir
         toplam_gider += gider
         toplam_malzeme_para += malzeme
+        toplam_iscilik += iscilik
 
         if bu_ay_mi(
-            is_.get("tarih", "")
+            is_.get("tarih", ""),
+            yil,
+            ay
         ):
 
             ay_gelir += gelir
             ay_gider += gider
             ay_malzeme += malzeme
+            ay_iscilik += iscilik
 
     return {
 
@@ -375,6 +483,13 @@ def hesaplar():
         "ay_gider": ay_gider,
 
         "ay_malzeme": ay_malzeme,
+
+        "ay_iscilik": ay_iscilik,
+
+        "ay_alinacak":
+            ay_iscilik
+            + ay_malzeme
+            - ay_gelir,
 
         "ay_net":
             ay_gelir
@@ -389,6 +504,9 @@ def hesaplar():
 
         "toplam_malzeme":
             toplam_malzeme_para,
+
+        "toplam_iscilik":
+            toplam_iscilik,
 
         "toplam_net":
             toplam_gelir
@@ -589,7 +707,7 @@ class TakvimPopup(Popup):
             ),
             font_size=20,
             bold=True,
-            color=BUTON_METIN
+            color=BEYAZ
         )
 
         sonraki = buton(
@@ -623,7 +741,7 @@ class TakvimPopup(Popup):
                     text=gun,
                     font_size=14,
                     bold=True,
-                    color=BUTON_METIN
+                    color=BEYAZ
                 )
             )
 
@@ -814,17 +932,28 @@ class AnaSayfa(Screen):
             )
         )
 
-        self.ozet = Label(
+        self.durum_kutu = KirmiziKutu(
             text="",
-            font_size=21,
+            font_size=19,
             bold=True,
             color=BEYAZ,
+            halign="center",
+            valign="middle",
             size_hint_y=None,
-            height=dp(100)
+            height=dp(90)
+        )
+
+        self.durum_kutu.bind(
+            size=lambda obj, val:
+            setattr(
+                obj,
+                "text_size",
+                val
+            )
         )
 
         ana.add_widget(
-            self.ozet
+            self.durum_kutu
         )
 
         menuler = [
@@ -901,15 +1030,59 @@ class AnaSayfa(Screen):
 
     def on_enter(self):
 
-        h = hesaplar()
-
-        self.ozet.text = (
-            f"KAZANCIM\n"
-            f"💰 Bu ay: "
-            f"{h['ay_net']:.2f} TL\n"
-            f"📊 Toplam: "
-            f"{h['toplam_net']:.2f} TL"
+        isler = oku(
+            ISLER_DOSYASI
         )
+
+        toplam_alinacak = 0
+        toplam_iscilik = 0
+
+        for is_ in isler:
+
+            iscilik = para(
+                is_.get("iscilik", 0)
+            )
+
+            alinan = para(
+                is_.get("gelir", 0)
+            )
+
+            malzeme_toplami = toplam_malzeme(
+                is_
+            )
+
+            alinacak = (
+                iscilik
+                + malzeme_toplami
+                - alinan
+            )
+
+            if alinacak > 0:
+                toplam_alinacak += alinacak
+
+            toplam_iscilik += iscilik
+
+        if toplam_alinacak > 0:
+
+            self.durum_kutu.renk_ayarla(
+                KIRMIZI
+            )
+
+            self.durum_kutu.text = (
+                "🔴 TOPLAM ALINACAK\n"
+                f"{toplam_alinacak:.2f} TL"
+            )
+
+        else:
+
+            self.durum_kutu.renk_ayarla(
+                YESIL
+            )
+
+            self.durum_kutu.text = (
+                "✅ KÂRIM (Net Kazanç - İşçilik)\n"
+                f"{toplam_iscilik:.2f} TL"
+            )
 
 
 # =========================================================
@@ -943,6 +1116,8 @@ class YeniIs(Screen):
         )
 
         scroll = ScrollView()
+
+        self.scroll = scroll
 
         form = BoxLayout(
             orientation="vertical",
@@ -1058,20 +1233,62 @@ class YeniIs(Screen):
         )
 
         self.gelir = giris(
-            "Alınacak / alınan para (TL)",
+            "Alınan (TL)",
             input_filter="float"
         )
 
-        self.gider = giris(
-            "Diğer gider (TL)",
+        self.iscilik = giris(
+            "İşçilik (TL)",
             input_filter="float"
         )
 
         form.add_widget(self.aciklama)
         form.add_widget(self.baslangic)
         form.add_widget(self.bitis)
-        form.add_widget(self.gelir)
-        form.add_widget(self.gider)
+
+        form.add_widget(
+            etiketli_alan(
+                "Alınan",
+                self.gelir
+            )
+        )
+
+        form.add_widget(
+            etiketli_alan(
+                "İşçilik",
+                self.iscilik
+            )
+        )
+
+        form.add_widget(
+            Label(
+                text="💸 DİĞER GİDERLER",
+                font_size=22,
+                bold=True,
+                color=BEYAZ,
+                size_hint_y=None,
+                height=dp(42)
+            )
+        )
+
+        self.gider_kutusu = BoxLayout(
+            orientation="vertical",
+            spacing=dp(7),
+            size_hint_y=None
+        )
+
+        self.gider_kutusu.bind(
+            minimum_height=
+            self.gider_kutusu.setter("height")
+        )
+
+        form.add_widget(
+            self.gider_kutusu
+        )
+
+        self.gider_satirlari = []
+
+        self.gider_satiri_ekle()
 
         form.add_widget(
             Label(
@@ -1121,7 +1338,7 @@ class YeniIs(Screen):
         )
 
         self.malzeme_fiyat = giris(
-            "Birim fiyat",
+            "Fiyat",
             input_filter="float"
         )
 
@@ -1173,6 +1390,30 @@ class YeniIs(Screen):
             self.malzeme_listesi
         )
 
+        self.alinacak_kutu = KirmiziKutu(
+            text="ALINACAK TUTAR: 0.00 TL",
+            font_size=20,
+            bold=True,
+            color=BEYAZ,
+            halign="center",
+            valign="middle",
+            size_hint_y=None,
+            height=dp(64)
+        )
+
+        self.alinacak_kutu.bind(
+            size=lambda obj, val:
+            setattr(
+                obj,
+                "text_size",
+                val
+            )
+        )
+
+        form.add_widget(
+            self.alinacak_kutu
+        )
+
         kaydet_btn = buton(
             "💾 İŞİ KAYDET",
             renk=YESIL,
@@ -1200,7 +1441,7 @@ class YeniIs(Screen):
             self.telefon,
             self.aciklama,
             self.gelir,
-            self.gider,
+            self.iscilik,
             self.malzeme_adi,
             self.malzeme_adet,
             self.malzeme_fiyat
@@ -1210,6 +1451,42 @@ class YeniIs(Screen):
                 scroll,
                 widget
             )
+
+        self.gelir.bind(
+            text=self._alinacak_guncelle
+        )
+
+        self.iscilik.bind(
+            text=self._alinacak_guncelle
+        )
+
+        self._alinacak_guncelle()
+
+    def _alinacak_guncelle(self, *args):
+
+        iscilik = para(
+            self.iscilik.text
+        )
+
+        malzeme_toplami = sum(
+            para(m.get("fiyat", 0))
+            for m in self.malzemeler
+        )
+
+        alinan = para(
+            self.gelir.text
+        )
+
+        alinacak = (
+            iscilik
+            + malzeme_toplami
+            - alinan
+        )
+
+        self.alinacak_kutu.text = (
+            "ALINACAK TUTAR: "
+            f"{alinacak:.2f} TL"
+        )
 
     def tarih_sec(
         self,
@@ -1376,6 +1653,72 @@ class YeniIs(Screen):
 
         popup.open()
 
+    GIDER_KATEGORILERI = (
+        "Yakıt",
+        "Malzeme Özel",
+        "Gıda"
+    )
+
+    def gider_satiri_ekle(self):
+
+        satir = BoxLayout(
+            size_hint_y=None,
+            height=dp(58),
+            spacing=dp(7)
+        )
+
+        kategori = Spinner(
+            text="Yakıt",
+            values=self.GIDER_KATEGORILERI,
+            size_hint_x=.42,
+            size_hint_y=None,
+            height=dp(58),
+            font_size=16,
+            background_normal="",
+            background_color=GIRIS,
+            color=GIRIS_METIN
+        )
+
+        tutar = giris(
+            "Tutar (TL)",
+            input_filter="float"
+        )
+
+        satir.add_widget(kategori)
+        satir.add_widget(tutar)
+
+        self.gider_kutusu.add_widget(satir)
+
+        kayit = {
+            "satir": satir,
+            "kategori": kategori,
+            "tutar": tutar
+        }
+
+        self.gider_satirlari.append(kayit)
+
+        klavye_uyumu(
+            self.scroll,
+            tutar
+        )
+
+        tutar.bind(
+            text=lambda instance, deger, kayit=kayit:
+            self._gider_yazildi(kayit, deger)
+        )
+
+    def _gider_yazildi(
+        self,
+        kayit,
+        deger
+    ):
+
+        if (
+            deger.strip()
+            and kayit is self.gider_satirlari[-1]
+        ):
+            self.gider_satiri_ekle()
+
     def malzeme_ekle(
         self,
         instance
@@ -1439,6 +1782,8 @@ class YeniIs(Screen):
                 "Henüz malzeme yok."
             )
 
+            self._alinacak_guncelle()
+
             return
 
         toplam = 0
@@ -1474,6 +1819,8 @@ class YeniIs(Screen):
 
         self.malzeme_listesi.text = metin
 
+        self._alinacak_guncelle()
+
     def kaydet(
         self,
         instance
@@ -1487,11 +1834,31 @@ class YeniIs(Screen):
             gelir = 0
 
         try:
-            gider = float(
-                self.gider.text or 0
+            iscilik = float(
+                self.iscilik.text or 0
             )
         except Exception:
-            gider = 0
+            iscilik = 0
+
+        diger_giderler = []
+        gider = 0
+
+        for kayit in self.gider_satirlari:
+
+            tutar = para(
+                kayit["tutar"].text
+            )
+
+            if tutar > 0:
+
+                gider += tutar
+
+                diger_giderler.append({
+                    "kategori":
+                        kayit["kategori"].text,
+                    "tutar":
+                        tutar
+                })
 
         veri = {
 
@@ -1523,8 +1890,14 @@ class YeniIs(Screen):
             "gelir":
                 gelir,
 
+            "iscilik":
+                iscilik,
+
             "gider":
                 gider,
+
+            "diger_giderler":
+                diger_giderler,
 
             "malzemeler":
                 self.malzemeler,
@@ -1560,7 +1933,7 @@ class YeniIs(Screen):
             self.baslangic,
             self.bitis,
             self.gelir,
-            self.gider,
+            self.iscilik,
             self.malzeme_adi,
             self.malzeme_adet,
             self.malzeme_fiyat
@@ -1578,6 +1951,12 @@ class YeniIs(Screen):
         self.durum.text = (
             "Devam ediyor"
         )
+
+        self.gider_kutusu.clear_widgets()
+
+        self.gider_satirlari = []
+
+        self.gider_satiri_ekle()
 
         self.malzemeler = []
 
@@ -1932,6 +2311,11 @@ class IsDetay(Screen):
             input_filter="float"
         )
 
+        self.iscilik = giris(
+            "İşçilik",
+            input_filter="float"
+        )
+
         self.gider = giris(
             "Gider",
             input_filter="float"
@@ -1960,8 +2344,27 @@ class IsDetay(Screen):
         form.add_widget(self.aciklama)
         form.add_widget(self.baslangic)
         form.add_widget(self.bitis)
-        form.add_widget(self.gelir)
-        form.add_widget(self.gider)
+
+        form.add_widget(
+            etiketli_alan(
+                "Alınan",
+                self.gelir
+            )
+        )
+
+        form.add_widget(
+            etiketli_alan(
+                "İşçilik",
+                self.iscilik
+            )
+        )
+
+        form.add_widget(
+            etiketli_alan(
+                "Diğer Gider",
+                self.gider
+            )
+        )
 
         form.add_widget(
             Label(
@@ -2005,6 +2408,30 @@ class IsDetay(Screen):
             yeni_malzeme
         )
 
+        self.alinacak_kutu = KirmiziKutu(
+            text="ALINACAK TUTAR: 0.00 TL",
+            font_size=20,
+            bold=True,
+            color=BEYAZ,
+            halign="center",
+            valign="middle",
+            size_hint_y=None,
+            height=dp(64)
+        )
+
+        self.alinacak_kutu.bind(
+            size=lambda obj, val:
+            setattr(
+                obj,
+                "text_size",
+                val
+            )
+        )
+
+        form.add_widget(
+            self.alinacak_kutu
+        )
+
         kaydet_btn = buton(
             "💾 DEĞİŞİKLİKLERİ KAYDET",
             renk=YESIL,
@@ -2025,6 +2452,42 @@ class IsDetay(Screen):
         ana.add_widget(scroll)
 
         self.add_widget(ana)
+
+        self.gelir.bind(
+            text=self._alinacak_guncelle
+        )
+
+        self.iscilik.bind(
+            text=self._alinacak_guncelle
+        )
+
+        self._alinacak_guncelle()
+
+    def _alinacak_guncelle(self, *args):
+
+        iscilik = para(
+            self.iscilik.text
+        )
+
+        malzeme_toplami = sum(
+            para(m.get("fiyat", 0))
+            for m in self.malzemeler
+        )
+
+        alinan = para(
+            self.gelir.text
+        )
+
+        alinacak = (
+            iscilik
+            + malzeme_toplami
+            - alinan
+        )
+
+        self.alinacak_kutu.text = (
+            "ALINACAK TUTAR: "
+            f"{alinacak:.2f} TL"
+        )
 
     def on_enter(self):
 
@@ -2091,6 +2554,13 @@ class IsDetay(Screen):
             )
         )
 
+        self.iscilik.text = str(
+            is_.get(
+                "iscilik",
+                0
+            )
+        )
+
         self.gider.text = str(
             is_.get(
                 "gider",
@@ -2120,6 +2590,8 @@ class IsDetay(Screen):
                     height=dp(45)
                 )
             )
+
+            self._alinacak_guncelle()
 
             return
 
@@ -2176,6 +2648,8 @@ class IsDetay(Screen):
             self.malzeme_listesi.add_widget(
                 sil
             )
+
+        self._alinacak_guncelle()
 
     def odeme_degistir(
         self,
@@ -2370,6 +2844,10 @@ class IsDetay(Screen):
             self.gelir.text
         )
 
+        is_["iscilik"] = para(
+            self.iscilik.text
+        )
+
         is_["gider"] = para(
             self.gider.text
         )
@@ -2408,6 +2886,11 @@ class GelirGider(Screen):
 
         super().__init__(**kwargs)
 
+        simdi = datetime.now()
+
+        self.secili_yil = simdi.year
+        self.secili_ay = simdi.month
+
         ana = BoxLayout(
             orientation="vertical",
             padding=dp(10),
@@ -2422,47 +2905,113 @@ class GelirGider(Screen):
             )
         )
 
+        ay_satir = BoxLayout(
+            size_hint_y=None,
+            height=dp(58),
+            spacing=dp(7)
+        )
+
+        onceki = buton(
+            "‹",
+            yukseklik=56,
+            font=30
+        )
+
+        onceki.size_hint_x = .18
+
+        onceki.bind(
+            on_press=self.onceki_ay
+        )
+
+        self.ay_baslik = Label(
+            text="",
+            font_size=20,
+            bold=True,
+            color=BEYAZ
+        )
+
+        sonraki = buton(
+            "›",
+            yukseklik=56,
+            font=30
+        )
+
+        sonraki.size_hint_x = .18
+
+        sonraki.bind(
+            on_press=self.sonraki_ay
+        )
+
+        ay_satir.add_widget(onceki)
+        ay_satir.add_widget(self.ay_baslik)
+        ay_satir.add_widget(sonraki)
+
+        ana.add_widget(ay_satir)
+
         self.ozet = Label(
             text="",
             font_size=21,
             bold=True,
             color=BEYAZ,
             size_hint_y=None,
-            height=dp(240)
+            height=dp(260)
         )
 
         ana.add_widget(
             self.ozet
         )
 
-        yenile = buton(
-            "🔄 YENİLE",
-            yukseklik=58,
-            font=18
+        self.durum_kutu = KirmiziKutu(
+            text="",
+            font_size=20,
+            bold=True,
+            color=BEYAZ,
+            halign="center",
+            valign="middle",
+            size_hint_y=None,
+            height=dp(90)
         )
 
-        yenile.bind(
-            on_press=lambda *_:
-            self.yenile()
-        )
-
-        ana.add_widget(
-            yenile
-        )
-
-        ana.add_widget(
-            Label(
-                text=(
-                    "Not: İşçilik burada "
-                    "net tutar üzerinden "
-                    "gösterilmektedir."
-                ),
-                font_size=14,
-                color=SOLUK
+        self.durum_kutu.bind(
+            size=lambda obj, val:
+            setattr(
+                obj,
+                "text_size",
+                val
             )
         )
 
+        ana.add_widget(
+            self.durum_kutu
+        )
+
         self.add_widget(ana)
+
+    def onceki_ay(
+        self,
+        instance
+    ):
+
+        self.secili_ay -= 1
+
+        if self.secili_ay == 0:
+            self.secili_ay = 12
+            self.secili_yil -= 1
+
+        self.yenile()
+
+    def sonraki_ay(
+        self,
+        instance
+    ):
+
+        self.secili_ay += 1
+
+        if self.secili_ay == 13:
+            self.secili_ay = 1
+            self.secili_yil += 1
+
+        self.yenile()
 
     def on_enter(self):
 
@@ -2470,13 +3019,24 @@ class GelirGider(Screen):
 
     def yenile(self):
 
-        h = hesaplar()
+        h = hesaplar(
+            self.secili_yil,
+            self.secili_ay
+        )
+
+        self.ay_baslik.text = (
+            f"{TakvimPopup.AY_ISIMLERI[self.secili_ay - 1]} "
+            f"{self.secili_yil}"
+        )
+
+        ay_toplam_net = (
+            h["ay_iscilik"]
+            + h["ay_malzeme"]
+        )
 
         self.ozet.text = (
 
-            f"📅 BU AY\n"
-
-            f"💰 Gelir: "
+            f"💰 Alınan: "
             f"{h['ay_gelir']:.2f} TL\n"
 
             f"💸 Diğer gider: "
@@ -2486,11 +3046,41 @@ class GelirGider(Screen):
             f"{h['ay_malzeme']:.2f} TL\n"
 
             f"👷 İŞÇİLİK: "
-            f"{abs(h['ay_net']):.2f} TL\n\n"
+            f"{h['ay_iscilik']:.2f} TL\n\n"
 
             f"📚 TOPLAM NET: "
-            f"{h['toplam_net']:.2f} TL"
+            f"{ay_toplam_net:.2f} TL"
         )
+
+        ay_alinacak = h["ay_alinacak"]
+
+        if ay_alinacak > 0:
+
+            self.durum_kutu.renk_ayarla(
+                KIRMIZI
+            )
+
+            self.durum_kutu.text = (
+                f"👷 İşçilik: {h['ay_iscilik']:.2f} TL\n"
+                f"📦 Malzeme: {h['ay_malzeme']:.2f} TL"
+            )
+
+        else:
+
+            kar = (
+                h["ay_gelir"]
+                - h["ay_gider"]
+                - h["ay_malzeme"]
+            )
+
+            self.durum_kutu.renk_ayarla(
+                YESIL
+            )
+
+            self.durum_kutu.text = (
+                "✅ KÂR: "
+                f"{kar:.2f} TL"
+            )
 
 
 # =========================================================
@@ -2795,31 +3385,6 @@ class Raporlar(Screen):
             ISLER_DOSYASI
         )
 
-        h = hesaplar()
-
-        self.icerik.add_widget(
-            Label(
-                text=(
-                    "📊 GENEL DURUM\n\n"
-                    f"Toplam iş: "
-                    f"{len(isler)}\n\n"
-                    f"Toplam gelir: "
-                    f"{h['toplam_gelir']:.2f} TL\n\n"
-                    f"Toplam gider: "
-                    f"{h['toplam_gider']:.2f} TL\n\n"
-                    f"Toplam malzeme: "
-                    f"{h['toplam_malzeme']:.2f} TL\n\n"
-                    f"Toplam net: "
-                    f"{h['toplam_net']:.2f} TL"
-                ),
-                font_size=20,
-                bold=True,
-                color=BEYAZ,
-                size_hint_y=None,
-                height=dp(330)
-            )
-        )
-
         devam = 0
         bitti = 0
         beklemede = 0
@@ -2856,6 +3421,182 @@ class Raporlar(Screen):
                 height=dp(230)
             )
         )
+
+        self.icerik.add_widget(
+            Label(
+                text="📑 İŞ BAZLI DÖKÜM",
+                font_size=22,
+                bold=True,
+                color=BEYAZ,
+                size_hint_y=None,
+                height=dp(42)
+            )
+        )
+
+        if not isler:
+
+            self.icerik.add_widget(
+                Label(
+                    text="Henüz iş kaydı yok.",
+                    font_size=18,
+                    color=SOLUK,
+                    size_hint_y=None,
+                    height=dp(50)
+                )
+            )
+
+        for index in range(
+            len(isler) - 1,
+            -1,
+            -1
+        ):
+
+            is_ = isler[index]
+
+            is_adi = is_.get(
+                "is_adi",
+                "İsimsiz İş"
+            )
+
+            tarih = is_.get(
+                "tarih",
+                "Tarih yok"
+            )
+
+            iscilik = para(
+                is_.get("iscilik", 0)
+            )
+
+            alinan = para(
+                is_.get("gelir", 0)
+            )
+
+            malzeme_toplami = toplam_malzeme(
+                is_
+            )
+
+            alinacak = (
+                iscilik
+                + malzeme_toplami
+                - alinan
+            )
+
+            satirlar = [
+                f"[b]🔨 {is_adi}[/b]",
+                f"📅 {tarih}",
+                f"👷 İşçilik: {iscilik:.2f} TL",
+                f"💰 Alınan: {alinan:.2f} TL",
+                f"📦 Malzeme: {malzeme_toplami:.2f} TL"
+            ]
+
+            diger_giderler = is_.get(
+                "diger_giderler",
+                []
+            )
+
+            if diger_giderler:
+
+                for dg in diger_giderler:
+
+                    kategori = dg.get(
+                        "kategori",
+                        "Diğer"
+                    )
+
+                    ikon = GIDER_IKONLARI.get(
+                        kategori,
+                        "💸"
+                    )
+
+                    satirlar.append(
+                        f"{ikon} {kategori}: "
+                        f"{para(dg.get('tutar', 0)):.2f} TL"
+                    )
+
+            elif para(is_.get("gider", 0)) > 0:
+
+                satirlar.append(
+                    f"💸 Diğer gider: "
+                    f"{para(is_.get('gider', 0)):.2f} TL"
+                )
+
+            if alinacak > 0:
+
+                satirlar.append(
+                    "[color=D93333][b]🔴 Alınacak: "
+                    f"{alinacak:.2f} TL[/b][/color]"
+                )
+
+            else:
+
+                kar_is = (
+                    alinan
+                    - malzeme_toplami
+                    - para(is_.get("gider", 0))
+                )
+
+                satirlar.append(
+                    "[color=33A64D][b]✅ Kâr: "
+                    f"{kar_is:.2f} TL[/b][/color]"
+                )
+
+            metin = "\n".join(satirlar)
+
+            kart_btn = buton(
+                metin,
+                yukseklik=40,
+                font=17
+            )
+
+            kart_btn.markup = True
+            kart_btn.halign = "left"
+            kart_btn.valign = "top"
+            kart_btn.padding = (
+                dp(16),
+                dp(16)
+            )
+
+            kart_btn.bind(
+                width=lambda obj, val:
+                setattr(
+                    obj,
+                    "text_size",
+                    (val - dp(32), None)
+                )
+            )
+
+            kart_btn.bind(
+                texture_size=lambda obj, val:
+                setattr(
+                    obj,
+                    "height",
+                    val[1] + dp(32)
+                )
+            )
+
+            kart_btn.bind(
+                on_press=lambda _, i=index:
+                self.detay_ac(i)
+            )
+
+            self.icerik.add_widget(
+                kart_btn
+            )
+
+    def detay_ac(
+        self,
+        index
+    ):
+
+        detay = self.manager.get_screen(
+            "detay"
+        )
+
+        detay.is_index = index
+
+        detay.yukle()
+
+        self.manager.current = "detay"
 
 
 # =========================================================
