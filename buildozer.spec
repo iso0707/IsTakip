@@ -43,7 +43,7 @@ version = 0.1
 # (list) Application requirements
 # comma separated e.g. requirements = sqlite3,kivy
 requirements = python3,kivy==2.3.1
-p4a.branch = develop
+p4a.branch = master
 android.api = 36
 android.ndk = 29
 
