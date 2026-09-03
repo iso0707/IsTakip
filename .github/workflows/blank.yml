@@ -1,0 +1,28 @@
+name: Android APK Oluştur
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  build-android:
+    name: Android APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Projeyi indir
+        uses: actions/checkout@v4
+
+      - name: APK oluştur
+        uses: ArtemSBulgakov/buildozer-action@v1
+        id: buildozer
+        with:
+          workdir: .
+          buildozer_version: stable
+
+      - name: APK'yı kaydet
+        uses: actions/upload-artifact@v4
+        with:
+          name: IsTakip-APK
+          path: ${{ steps.buildozer.outputs.filename }}
