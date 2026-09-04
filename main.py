@@ -6,10 +6,17 @@ from datetime import datetime
 
 from kivy.app import App
 from kivy.core.window import Window
+from kivy.core.audio import SoundLoader
 from kivy.clock import Clock
+from kivy.animation import Animation
 from kivy.metrics import dp
-from kivy.uix.screenmanager import ScreenManager, Screen
+from kivy.uix.screenmanager import (
+    ScreenManager,
+    Screen,
+    FadeTransition
+)
 from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.floatlayout import FloatLayout
 from kivy.uix.gridlayout import GridLayout
 from kivy.uix.button import Button
 from kivy.uix.label import Label
@@ -17,7 +24,9 @@ from kivy.uix.textinput import TextInput
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.popup import Popup
 from kivy.uix.spinner import Spinner
-from kivy.graphics import Color, RoundedRectangle
+from kivy.uix.progressbar import ProgressBar
+from kivy.uix.widget import Widget
+from kivy.graphics import Color, RoundedRectangle, Line
 
 
 # =========================================================
@@ -39,6 +48,11 @@ YERLER_DOSYASI = os.path.join(
 YEDEK_KLASORU = os.path.join(
     BASE_DIR,
     "yedekler"
+)
+
+SES_DOSYASI = os.path.join(
+    BASE_DIR,
+    "acilis_sesi.mp3"
 )
 
 
@@ -65,7 +79,8 @@ KIRMIZI = (0.85, 0.20, 0.20, 1)
 GIDER_IKONLARI = {
     "Yakıt": "⛽",
     "Malzeme Özel": "🧰",
-    "Gıda": "🍔"
+    "Gıda": "🍔",
+    "Yardımcı Eleman": "🧑‍🔧"
 }
 
 
@@ -217,6 +232,16 @@ class YuvarlakButon(Button):
                 if self.ozel_renk
                 else BUTON
             )
+
+    def renk_degistir(self, yeni_renk):
+
+        self.ozel_renk = yeni_renk
+
+        self._renk.rgba = (
+            yeni_renk
+            if yeni_renk
+            else BUTON
+        )
 
 
 def buton(
@@ -393,6 +418,29 @@ def is_durumu(is_):
     )
 
 
+def alinacak_hesapla(
+    malzemeli,
+    iscilik,
+    malzeme_toplami,
+    alinan
+):
+    # Malzemeli işlerde malzeme tutarı zaten
+    # işçilik rakamına dahil edilmiş kabul
+    # edilir; bu yüzden alınacak tutara
+    # tekrar eklenmez. Malzemesiz işlerde
+    # malzeme tutarı ayrıca eklenir.
+
+    if malzemeli:
+
+        return iscilik - alinan
+
+    return (
+        iscilik
+        + malzeme_toplami
+        - alinan
+    )
+
+
 def bu_ay_mi(
     tarih,
     yil=None,
@@ -423,6 +471,32 @@ def bu_ay_mi(
         return False
 
 
+def kayit_tarihi(baslangic_metni):
+
+    try:
+
+        secilen = datetime.strptime(
+            baslangic_metni.strip(),
+            "%d.%m.%Y"
+        )
+
+        saat = datetime.now().strftime(
+            "%H:%M"
+        )
+
+        return (
+            secilen.strftime("%d.%m.%Y")
+            + " "
+            + saat
+        )
+
+    except Exception:
+
+        return datetime.now().strftime(
+            "%d.%m.%Y %H:%M"
+        )
+
+
 def hesaplar(
     yil=None,
     ay=None
@@ -435,11 +509,14 @@ def hesaplar(
     ay_gelir = 0
     ay_gider = 0
     ay_malzeme = 0
+    ay_malzeme_kar = 0
+    ay_malzeme_alinacak = 0
     ay_iscilik = 0
 
     toplam_gelir = 0
     toplam_gider = 0
     toplam_malzeme_para = 0
+    toplam_malzeme_kar = 0
     toplam_iscilik = 0
 
     for is_ in isler:
@@ -456,6 +533,27 @@ def hesaplar(
             is_
         )
 
+        malzemeli = is_.get(
+            "malzemeli",
+            True
+        )
+
+        malzeme_kar = (
+            malzeme
+            if malzemeli
+            else 0
+        )
+
+        # Malzemeli işlerde malzeme tutarı
+        # zaten işçilik rakamına dahil
+        # olduğundan alınacak tutara
+        # tekrar eklenmez.
+        malzeme_alinacak = (
+            0
+            if malzemeli
+            else malzeme
+        )
+
         iscilik = para(
             is_.get("iscilik", 0)
         )
@@ -463,6 +561,7 @@ def hesaplar(
         toplam_gelir += gelir
         toplam_gider += gider
         toplam_malzeme_para += malzeme
+        toplam_malzeme_kar += malzeme_kar
         toplam_iscilik += iscilik
 
         if bu_ay_mi(
@@ -474,6 +573,8 @@ def hesaplar(
             ay_gelir += gelir
             ay_gider += gider
             ay_malzeme += malzeme
+            ay_malzeme_kar += malzeme_kar
+            ay_malzeme_alinacak += malzeme_alinacak
             ay_iscilik += iscilik
 
     return {
@@ -488,13 +589,13 @@ def hesaplar(
 
         "ay_alinacak":
             ay_iscilik
-            + ay_malzeme
+            + ay_malzeme_alinacak
             - ay_gelir,
 
         "ay_net":
             ay_gelir
             - ay_gider
-            - ay_malzeme,
+            - ay_malzeme_kar,
 
         "toplam_gelir":
             toplam_gelir,
@@ -511,7 +612,7 @@ def hesaplar(
         "toplam_net":
             toplam_gelir
             - toplam_gider
-            - toplam_malzeme_para
+            - toplam_malzeme_kar
     }
 
 
@@ -893,6 +994,331 @@ class TarihInput(TextInput):
 
 
 # =========================================================
+# AÇILIŞ EKRANI (SPLASH)
+# =========================================================
+
+class NabizHalkasi(Widget):
+
+    def __init__(
+        self,
+        **kwargs
+    ):
+
+        super().__init__(**kwargs)
+
+        with self.canvas:
+
+            self._renk = Color(1, 1, 1, 0)
+
+            self._cember = Line(
+                circle=(0, 0, 0),
+                width=dp(2)
+            )
+
+        self._devam_olay = None
+
+        self.bind(
+            pos=self._guncelle,
+            size=self._guncelle
+        )
+
+    def _guncelle(self, *args):
+
+        self._cember.circle = (
+            self.center_x,
+            self.center_y,
+            self.width / 2
+        )
+
+    def baslat(self, gecikme=0):
+
+        Clock.schedule_once(
+            lambda dt: self._dongu(),
+            gecikme
+        )
+
+    def _dongu(self):
+
+        self.size = (dp(24), dp(24))
+        self._renk.a = .55
+
+        Animation(
+            size=(dp(230), dp(230)),
+            duration=1.7,
+            t="out_quad"
+        ).start(self)
+
+        Animation(
+            a=0,
+            duration=1.7,
+            t="out_quad"
+        ).start(self._renk)
+
+        self._devam_olay = Clock.schedule_once(
+            lambda dt: self._dongu(),
+            1.7
+        )
+
+    def durdur(self):
+
+        if self._devam_olay:
+            self._devam_olay.cancel()
+
+        Animation.cancel_all(self)
+        Animation.cancel_all(self._renk)
+
+
+class AcilisEkrani(Screen):
+
+    def __init__(
+        self,
+        **kwargs
+    ):
+
+        super().__init__(**kwargs)
+
+        self.kok = FloatLayout()
+
+        with self.kok.canvas.before:
+
+            Color(*ARKA)
+
+            self._zemin = RoundedRectangle(
+                pos=self.kok.pos,
+                size=self.kok.size,
+                radius=[0]
+            )
+
+        self.kok.bind(
+            pos=self._zemin_guncelle,
+            size=self._zemin_guncelle
+        )
+
+        merkez = {
+            "center_x": .5,
+            "center_y": .60
+        }
+
+        self.halka1 = NabizHalkasi(
+            size_hint=(None, None),
+            size=(0, 0),
+            pos_hint=merkez
+        )
+
+        self.halka2 = NabizHalkasi(
+            size_hint=(None, None),
+            size=(0, 0),
+            pos_hint=merkez
+        )
+
+        self.baslik_kutu = BoxLayout(
+            orientation="horizontal",
+            size_hint=(None, None),
+            height=dp(46),
+            pos_hint={
+                "center_x": .5,
+                "center_y": .43
+            }
+        )
+
+        self.baslik_harfleri = []
+
+        for harf_yazi in "İŞ TAKİP PRO":
+
+            genislik = (
+                dp(14)
+                if harf_yazi == " "
+                else dp(23)
+            )
+
+            harf = Label(
+                text=harf_yazi,
+                font_size=30,
+                bold=True,
+                color=BEYAZ,
+                size_hint=(None, None),
+                size=(genislik, dp(46)),
+                opacity=0
+            )
+
+            self.baslik_harfleri.append(harf)
+
+            self.baslik_kutu.add_widget(harf)
+
+        self.baslik_kutu.bind(
+            minimum_width=
+            self.baslik_kutu.setter("width")
+        )
+
+        self.alt_yazi = Label(
+            text="ŞANTİYE • İŞ • PARA • MALZEME",
+            font_size=13,
+            color=SOLUK,
+            size_hint=(None, None),
+            size=(dp(320), dp(24)),
+            pos_hint={
+                "center_x": .5,
+                "center_y": .375
+            },
+            opacity=0
+        )
+
+        self.bar = ProgressBar(
+            max=100,
+            value=0,
+            size_hint=(None, None),
+            size=(dp(230), dp(8)),
+            pos_hint={
+                "center_x": .5,
+                "center_y": .30
+            },
+            opacity=0
+        )
+
+        self.durum_yazi = Label(
+            text="Yükleniyor",
+            font_size=16,
+            color=SOLUK,
+            size_hint=(None, None),
+            size=(dp(320), dp(28)),
+            pos_hint={
+                "center_x": .5,
+                "center_y": .25
+            },
+            opacity=0
+        )
+
+        self.kok.add_widget(self.halka1)
+        self.kok.add_widget(self.halka2)
+        self.kok.add_widget(self.baslik_kutu)
+        self.kok.add_widget(self.alt_yazi)
+        self.kok.add_widget(self.bar)
+        self.kok.add_widget(self.durum_yazi)
+
+        self.add_widget(self.kok)
+
+        self._nokta_sayaci = 0
+        self._nokta_olay = None
+        self._ses = None
+
+    def _zemin_guncelle(self, *args):
+
+        self._zemin.pos = self.kok.pos
+        self._zemin.size = self.kok.size
+
+    def on_enter(self):
+
+        self._sesi_calmayi_dene()
+
+        # Arkada yayılan radar
+        # halkaları
+        self.halka1.baslat(0)
+        self.halka2.baslat(.85)
+
+        # Başlık harfleri tek tek,
+        # sırayla beliriyor
+        for i, harf in enumerate(
+            self.baslik_harfleri
+        ):
+
+            Clock.schedule_once(
+                lambda dt, w=harf:
+                Animation(
+                    opacity=1,
+                    duration=.35,
+                    t="out_quad"
+                ).start(w),
+                .25 + i * .045
+            )
+
+        Animation(
+            opacity=1,
+            duration=.7,
+            t="out_quad"
+        ).start(self.alt_yazi)
+
+        Animation(
+            opacity=1,
+            duration=.7,
+            t="out_quad"
+        ).start(self.bar)
+
+        Animation(
+            opacity=1,
+            duration=.7,
+            t="out_quad"
+        ).start(self.durum_yazi)
+
+        # İlerleme çubuğu doluşu
+        Animation(
+            value=100,
+            duration=2.1,
+            t="out_quad"
+        ).start(self.bar)
+
+        # "Yükleniyor..." noktalarının
+        # akması
+        self._nokta_olay = Clock.schedule_interval(
+            self._noktalari_guncelle,
+            .4
+        )
+
+        Clock.schedule_once(
+            self._devam_et,
+            2.4
+        )
+
+    def _noktalari_guncelle(self, dt):
+
+        self._nokta_sayaci = (
+            self._nokta_sayaci + 1
+        ) % 4
+
+        self.durum_yazi.text = (
+            "Yükleniyor"
+            + "." * self._nokta_sayaci
+        )
+
+    def _sesi_calmayi_dene(self):
+
+        try:
+
+            if os.path.exists(
+                SES_DOSYASI
+            ):
+
+                self._ses = SoundLoader.load(
+                    SES_DOSYASI
+                )
+
+                if self._ses:
+
+                    self._ses.volume = 0.6
+                    self._ses.play()
+
+        except Exception:
+            pass
+
+    def _devam_et(self, dt):
+
+        if self._nokta_olay:
+            self._nokta_olay.cancel()
+
+        self.halka1.durdur()
+        self.halka2.durdur()
+
+        if self.manager:
+
+            self.manager.transition = (
+                FadeTransition(
+                    duration=.35
+                )
+            )
+
+            self.manager.current = "ana"
+
+
+# =========================================================
 # ANA SAYFA
 # =========================================================
 
@@ -1018,6 +1444,19 @@ class AnaSayfa(Screen):
 
             ana.add_widget(b)
 
+        cikis_btn = buton(
+            "💾 KAYDET VE ÇIK",
+            renk=KIRMIZI,
+            yukseklik=60,
+            font=19
+        )
+
+        cikis_btn.bind(
+            on_press=self.kaydet_ve_cik
+        )
+
+        ana.add_widget(cikis_btn)
+
         ana.add_widget(
             Label(
                 text="Veriler otomatik olarak saklanır.",
@@ -1028,6 +1467,51 @@ class AnaSayfa(Screen):
 
         self.add_widget(ana)
 
+    def kaydet_ve_cik(
+        self,
+        instance
+    ):
+
+        try:
+
+            os.makedirs(
+                YEDEK_KLASORU,
+                exist_ok=True
+            )
+
+            zaman = datetime.now().strftime(
+                "%Y%m%d_%H%M%S"
+            )
+
+            if os.path.exists(
+                ISLER_DOSYASI
+            ):
+
+                shutil.copy2(
+                    ISLER_DOSYASI,
+                    os.path.join(
+                        YEDEK_KLASORU,
+                        f"isler_{zaman}.json"
+                    )
+                )
+
+            if os.path.exists(
+                YERLER_DOSYASI
+            ):
+
+                shutil.copy2(
+                    YERLER_DOSYASI,
+                    os.path.join(
+                        YEDEK_KLASORU,
+                        f"yerler_{zaman}.json"
+                    )
+                )
+
+        except Exception:
+            pass
+
+        App.get_running_app().stop()
+
     def on_enter(self):
 
         isler = oku(
@@ -1036,6 +1520,8 @@ class AnaSayfa(Screen):
 
         toplam_alinacak = 0
         toplam_iscilik = 0
+        toplam_diger_gider = 0
+        toplam_malzeme_kar = 0
 
         for is_ in isler:
 
@@ -1051,16 +1537,33 @@ class AnaSayfa(Screen):
                 is_
             )
 
-            alinacak = (
-                iscilik
-                + malzeme_toplami
-                - alinan
+            alinacak = alinacak_hesapla(
+                is_.get("malzemeli", True),
+                iscilik,
+                malzeme_toplami,
+                alinan
             )
 
             if alinacak > 0:
                 toplam_alinacak += alinacak
 
             toplam_iscilik += iscilik
+
+            toplam_diger_gider += para(
+                is_.get("gider", 0)
+            )
+
+            if is_.get("malzemeli", True):
+
+                toplam_malzeme_kar += (
+                    malzeme_toplami
+                )
+
+        karim = (
+            toplam_iscilik
+            - toplam_diger_gider
+            - toplam_malzeme_kar
+        )
 
         if toplam_alinacak > 0:
 
@@ -1080,8 +1583,8 @@ class AnaSayfa(Screen):
             )
 
             self.durum_kutu.text = (
-                "✅ KÂRIM (Net Kazanç - İşçilik)\n"
-                f"{toplam_iscilik:.2f} TL"
+                "✅ KÂRIM (İşçilik - Diğer Gider)\n"
+                f"{karim:.2f} TL"
             )
 
 
@@ -1245,6 +1748,49 @@ class YeniIs(Screen):
         form.add_widget(self.aciklama)
         form.add_widget(self.baslangic)
         form.add_widget(self.bitis)
+
+        self.malzemeli = True
+
+        malzeme_secim_satir = BoxLayout(
+            size_hint_y=None,
+            height=dp(58),
+            spacing=dp(8)
+        )
+
+        self.malzemeli_btn = buton(
+            "📦 MALZEMELİ İŞ",
+            renk=YESIL,
+            yukseklik=56,
+            font=16
+        )
+
+        self.malzemesiz_btn = buton(
+            "🚫 MALZEMESİZ İŞ",
+            yukseklik=56,
+            font=16
+        )
+
+        self.malzemeli_btn.bind(
+            on_press=lambda *_:
+            self.malzeme_secim(True)
+        )
+
+        self.malzemesiz_btn.bind(
+            on_press=lambda *_:
+            self.malzeme_secim(False)
+        )
+
+        malzeme_secim_satir.add_widget(
+            self.malzemeli_btn
+        )
+
+        malzeme_secim_satir.add_widget(
+            self.malzemesiz_btn
+        )
+
+        form.add_widget(
+            malzeme_secim_satir
+        )
 
         form.add_widget(
             etiketli_alan(
@@ -1477,10 +2023,11 @@ class YeniIs(Screen):
             self.gelir.text
         )
 
-        alinacak = (
-            iscilik
-            + malzeme_toplami
-            - alinan
+        alinacak = alinacak_hesapla(
+            self.malzemeli,
+            iscilik,
+            malzeme_toplami,
+            alinan
         )
 
         self.alinacak_kutu.text = (
@@ -1655,8 +2202,9 @@ class YeniIs(Screen):
 
     GIDER_KATEGORILERI = (
         "Yakıt",
+        "Gıda",
         "Malzeme Özel",
-        "Gıda"
+        "Yardımcı Eleman"
     )
 
     def gider_satiri_ekle(self):
@@ -1718,6 +2266,30 @@ class YeniIs(Screen):
             and kayit is self.gider_satirlari[-1]
         ):
             self.gider_satiri_ekle()
+
+    def malzeme_secim(self, malzemeli):
+
+        self.malzemeli = malzemeli
+
+        if malzemeli:
+
+            self.malzemeli_btn.renk_degistir(
+                YESIL
+            )
+
+            self.malzemesiz_btn.renk_degistir(
+                None
+            )
+
+        else:
+
+            self.malzemeli_btn.renk_degistir(
+                None
+            )
+
+            self.malzemesiz_btn.renk_degistir(
+                KIRMIZI
+            )
 
     def malzeme_ekle(
         self,
@@ -1899,12 +2471,15 @@ class YeniIs(Screen):
             "diger_giderler":
                 diger_giderler,
 
+            "malzemeli":
+                self.malzemeli,
+
             "malzemeler":
                 self.malzemeler,
 
             "tarih":
-                datetime.now().strftime(
-                    "%d.%m.%Y %H:%M"
+                kayit_tarihi(
+                    self.baslangic.text
                 )
         }
 
@@ -2136,10 +2711,18 @@ class Gecmis(Screen):
                 spacing=dp(7)
             )
 
+            if durum == "Bitti":
+                is_renk = KIRMIZI
+            elif durum == "Beklemede":
+                is_renk = YESIL
+            else:
+                is_renk = BEYAZ
+
             detay_btn = buton(
                 f"🔨  {is_adi}\n\n"
                 f"👤  {musteri}\n"
                 f"📍  {yer}",
+                renk=is_renk,
                 yukseklik=110,
                 font=20
             )
@@ -2265,6 +2848,8 @@ class IsDetay(Screen):
 
         scroll = ScrollView()
 
+        self.scroll = scroll
+
         form = BoxLayout(
             orientation="vertical",
             spacing=dp(9),
@@ -2316,11 +2901,6 @@ class IsDetay(Screen):
             input_filter="float"
         )
 
-        self.gider = giris(
-            "Gider",
-            input_filter="float"
-        )
-
         self.durum = Spinner(
             text="Devam ediyor",
             values=(
@@ -2360,10 +2940,74 @@ class IsDetay(Screen):
         )
 
         form.add_widget(
-            etiketli_alan(
-                "Diğer Gider",
-                self.gider
+            Label(
+                text="💸 DİĞER GİDERLER",
+                font_size=22,
+                bold=True,
+                color=BEYAZ,
+                size_hint_y=None,
+                height=dp(42)
             )
+        )
+
+        self.gider_kutusu = BoxLayout(
+            orientation="vertical",
+            spacing=dp(7),
+            size_hint_y=None
+        )
+
+        self.gider_kutusu.bind(
+            minimum_height=
+            self.gider_kutusu.setter("height")
+        )
+
+        form.add_widget(
+            self.gider_kutusu
+        )
+
+        self.gider_satirlari = []
+
+        self.malzemeli = True
+
+        malzeme_secim_satir = BoxLayout(
+            size_hint_y=None,
+            height=dp(58),
+            spacing=dp(8)
+        )
+
+        self.malzemeli_btn = buton(
+            "📦 MALZEMELİ İŞ",
+            renk=YESIL,
+            yukseklik=56,
+            font=16
+        )
+
+        self.malzemesiz_btn = buton(
+            "🚫 MALZEMESİZ İŞ",
+            yukseklik=56,
+            font=16
+        )
+
+        self.malzemeli_btn.bind(
+            on_press=lambda *_:
+            self.malzeme_secim(True)
+        )
+
+        self.malzemesiz_btn.bind(
+            on_press=lambda *_:
+            self.malzeme_secim(False)
+        )
+
+        malzeme_secim_satir.add_widget(
+            self.malzemeli_btn
+        )
+
+        malzeme_secim_satir.add_widget(
+            self.malzemesiz_btn
+        )
+
+        form.add_widget(
+            malzeme_secim_satir
         )
 
         form.add_widget(
@@ -2478,16 +3122,124 @@ class IsDetay(Screen):
             self.gelir.text
         )
 
-        alinacak = (
-            iscilik
-            + malzeme_toplami
-            - alinan
+        alinacak = alinacak_hesapla(
+            self.malzemeli,
+            iscilik,
+            malzeme_toplami,
+            alinan
         )
 
         self.alinacak_kutu.text = (
             "ALINACAK TUTAR: "
             f"{alinacak:.2f} TL"
         )
+
+    GIDER_KATEGORILERI = (
+        "Yakıt",
+        "Gıda",
+        "Malzeme Özel",
+        "Yardımcı Eleman"
+    )
+
+    def gider_satiri_ekle(
+        self,
+        kategori_sec="Yakıt",
+        tutar_deger=""
+    ):
+
+        satir = BoxLayout(
+            size_hint_y=None,
+            height=dp(58),
+            spacing=dp(7)
+        )
+
+        kategori = Spinner(
+            text=kategori_sec,
+            values=self.GIDER_KATEGORILERI,
+            size_hint_x=.42,
+            size_hint_y=None,
+            height=dp(58),
+            font_size=16,
+            background_normal="",
+            background_color=GIRIS,
+            color=GIRIS_METIN
+        )
+
+        tutar = giris(
+            "Tutar (TL)",
+            input_filter="float"
+        )
+
+        tutar.text = tutar_deger
+
+        satir.add_widget(kategori)
+        satir.add_widget(tutar)
+
+        self.gider_kutusu.add_widget(satir)
+
+        kayit = {
+            "satir": satir,
+            "kategori": kategori,
+            "tutar": tutar
+        }
+
+        self.gider_satirlari.append(kayit)
+
+        klavye_uyumu(
+            self.scroll,
+            tutar
+        )
+
+        tutar.bind(
+            text=lambda instance, deger, kayit=kayit:
+            self._gider_yazildi(kayit, deger)
+        )
+
+    def _gider_yazildi(
+        self,
+        kayit,
+        deger
+    ):
+
+        if (
+            deger.strip()
+            and kayit is self.gider_satirlari[-1]
+        ):
+            self.gider_satiri_ekle()
+
+    def malzeme_secim(self, malzemeli):
+
+        self.malzemeli = malzemeli
+
+        if malzemeli:
+
+            self.malzemeli_btn.renk_degistir(
+                YESIL
+            )
+
+            self.malzemesiz_btn.renk_degistir(
+                None
+            )
+
+        else:
+
+            self.malzemeli_btn.renk_degistir(
+                None
+            )
+
+            self.malzemesiz_btn.renk_degistir(
+                KIRMIZI
+            )
+
+        # Malzemeli/malzemesiz değiştirilse
+        # bile malzeme listesi ekrandan
+        # kaybolmasın, her zaman güncel
+        # listeyle tekrar çizilsin.
+        if hasattr(
+            self,
+            "malzeme_listesi"
+        ):
+            self.malzemeleri_goster()
 
     def on_enter(self):
 
@@ -2561,16 +3313,48 @@ class IsDetay(Screen):
             )
         )
 
-        self.gider.text = str(
+        self.gider_kutusu.clear_widgets()
+        self.gider_satirlari = []
+
+        diger_giderler = is_.get(
+            "diger_giderler",
+            []
+        )
+
+        if diger_giderler:
+
+            for dg in diger_giderler:
+
+                self.gider_satiri_ekle(
+                    kategori_sec=dg.get(
+                        "kategori",
+                        "Yakıt"
+                    ),
+                    tutar_deger=str(
+                        para(dg.get("tutar", 0))
+                    )
+                )
+
+        elif para(is_.get("gider", 0)) > 0:
+
+            self.gider_satiri_ekle(
+                kategori_sec="Yakıt",
+                tutar_deger=str(
+                    para(is_.get("gider", 0))
+                )
+            )
+
+        self.gider_satiri_ekle()
+
+        self.malzemeler = list(
             is_.get(
-                "gider",
-                0
+                "malzemeler",
+                []
             )
         )
 
-        self.malzemeler = is_.get(
-            "malzemeler",
-            []
+        self.malzeme_secim(
+            is_.get("malzemeli", True)
         )
 
         self.malzemeleri_goster()
@@ -2674,13 +3458,83 @@ class IsDetay(Screen):
         index
     ):
 
-        if 0 <= index < len(
-            self.malzemeler
+        if not (
+            0 <= index < len(
+                self.malzemeler
+            )
         ):
+            return
+
+        malzeme = self.malzemeler[index]
+
+        kutu = BoxLayout(
+            orientation="vertical",
+            padding=dp(14),
+            spacing=dp(12)
+        )
+
+        kutu.add_widget(
+            Label(
+                text=(
+                    "🗑 "
+                    f"{malzeme.get('ad', '')} "
+                    "silinsin mi?\n"
+                    "Emin misiniz?"
+                ),
+                font_size=18,
+                color=BEYAZ,
+                halign="center"
+            )
+        )
+
+        butonlar = BoxLayout(
+            size_hint_y=None,
+            height=dp(56),
+            spacing=dp(8)
+        )
+
+        vazgec = buton(
+            "VAZGEÇ",
+            yukseklik=54,
+            font=17
+        )
+
+        evet = buton(
+            "EVET, SİL",
+            renk=KIRMIZI,
+            yukseklik=54,
+            font=17
+        )
+
+        butonlar.add_widget(vazgec)
+        butonlar.add_widget(evet)
+
+        kutu.add_widget(butonlar)
+
+        popup = Popup(
+            title="Malzemeyi Sil",
+            content=kutu,
+            size_hint=(.86, .40)
+        )
+
+        vazgec.bind(
+            on_press=lambda *_:
+            popup.dismiss()
+        )
+
+        def sil_onayla(instance):
 
             del self.malzemeler[index]
 
+            popup.dismiss()
+
             self.malzemeleri_goster()
+
+        evet.bind(
+            on_press=sil_onayla
+        )
+
+        popup.open()
 
     def yeni_malzeme_ekle(
         self,
@@ -2721,7 +3575,7 @@ class IsDetay(Screen):
         )
 
         fiyat = giris(
-            "Birim fiyat",
+            "Fiyat",
             input_filter="float"
         )
 
@@ -2848,16 +3702,49 @@ class IsDetay(Screen):
             self.iscilik.text
         )
 
-        is_["gider"] = para(
-            self.gider.text
+        diger_giderler = []
+        gider = 0
+
+        for kayit in self.gider_satirlari:
+
+            tutar = para(
+                kayit["tutar"].text
+            )
+
+            if tutar > 0:
+
+                gider += tutar
+
+                diger_giderler.append({
+                    "kategori":
+                        kayit["kategori"].text,
+                    "tutar":
+                        tutar
+                })
+
+        is_["gider"] = gider
+
+        is_["diger_giderler"] = (
+            diger_giderler
+        )
+
+        is_["malzemeli"] = (
+            self.malzemeli
         )
 
         is_["malzemeler"] = (
             self.malzemeler
         )
 
-        # Eski tarih korunuyor.
-        if "tarih" not in is_:
+        # Rapor/ay filtresi başlangıç
+        # tarihine göre güncellensin.
+        if self.baslangic.text.strip():
+
+            is_["tarih"] = kayit_tarihi(
+                self.baslangic.text
+            )
+
+        elif "tarih" not in is_:
 
             is_["tarih"] = (
                 datetime.now().strftime(
@@ -3029,11 +3916,6 @@ class GelirGider(Screen):
             f"{self.secili_yil}"
         )
 
-        ay_toplam_net = (
-            h["ay_iscilik"]
-            + h["ay_malzeme"]
-        )
-
         self.ozet.text = (
 
             f"💰 Alınan: "
@@ -3046,10 +3928,7 @@ class GelirGider(Screen):
             f"{h['ay_malzeme']:.2f} TL\n"
 
             f"👷 İŞÇİLİK: "
-            f"{h['ay_iscilik']:.2f} TL\n\n"
-
-            f"📚 TOPLAM NET: "
-            f"{ay_toplam_net:.2f} TL"
+            f"{h['ay_iscilik']:.2f} TL"
         )
 
         ay_alinacak = h["ay_alinacak"]
@@ -3067,11 +3946,7 @@ class GelirGider(Screen):
 
         else:
 
-            kar = (
-                h["ay_gelir"]
-                - h["ay_gider"]
-                - h["ay_malzeme"]
-            )
+            kar = h["ay_net"]
 
             self.durum_kutu.renk_ayarla(
                 YESIL
@@ -3338,6 +4213,12 @@ class Raporlar(Screen):
 
         super().__init__(**kwargs)
 
+        simdi = datetime.now()
+
+        self.secili_yil = simdi.year
+        self.secili_ay = simdi.month
+        self.hepsi_mi = True
+
         ana = BoxLayout(
             orientation="vertical",
             padding=dp(10),
@@ -3351,6 +4232,62 @@ class Raporlar(Screen):
                 "ana"
             )
         )
+
+        filtre_satir = BoxLayout(
+            size_hint_y=None,
+            height=dp(58),
+            spacing=dp(7)
+        )
+
+        onceki = buton(
+            "‹",
+            yukseklik=56,
+            font=30
+        )
+
+        onceki.size_hint_x = .16
+
+        onceki.bind(
+            on_press=self.onceki_ay
+        )
+
+        self.filtre_baslik = Label(
+            text="TÜMÜ",
+            font_size=19,
+            bold=True,
+            color=BEYAZ
+        )
+
+        sonraki = buton(
+            "›",
+            yukseklik=56,
+            font=30
+        )
+
+        sonraki.size_hint_x = .16
+
+        sonraki.bind(
+            on_press=self.sonraki_ay
+        )
+
+        self.hepsi_buton = buton(
+            "TÜMÜ",
+            yukseklik=56,
+            font=15
+        )
+
+        self.hepsi_buton.size_hint_x = .30
+
+        self.hepsi_buton.bind(
+            on_press=self.hepsini_goster
+        )
+
+        filtre_satir.add_widget(onceki)
+        filtre_satir.add_widget(self.filtre_baslik)
+        filtre_satir.add_widget(sonraki)
+        filtre_satir.add_widget(self.hepsi_buton)
+
+        ana.add_widget(filtre_satir)
 
         scroll = ScrollView()
 
@@ -3373,6 +4310,45 @@ class Raporlar(Screen):
 
         self.add_widget(ana)
 
+    def onceki_ay(
+        self,
+        instance
+    ):
+
+        self.hepsi_mi = False
+
+        self.secili_ay -= 1
+
+        if self.secili_ay == 0:
+            self.secili_ay = 12
+            self.secili_yil -= 1
+
+        self.yenile()
+
+    def sonraki_ay(
+        self,
+        instance
+    ):
+
+        self.hepsi_mi = False
+
+        self.secili_ay += 1
+
+        if self.secili_ay == 13:
+            self.secili_ay = 1
+            self.secili_yil += 1
+
+        self.yenile()
+
+    def hepsini_goster(
+        self,
+        instance
+    ):
+
+        self.hepsi_mi = True
+
+        self.yenile()
+
     def on_enter(self):
 
         self.yenile()
@@ -3381,9 +4357,43 @@ class Raporlar(Screen):
 
         self.icerik.clear_widgets()
 
-        isler = oku(
+        if self.hepsi_mi:
+
+            self.filtre_baslik.text = "TÜMÜ"
+
+        else:
+
+            self.filtre_baslik.text = (
+                f"{TakvimPopup.AY_ISIMLERI[self.secili_ay - 1]} "
+                f"{self.secili_yil}"
+            )
+
+        tum_isler = oku(
             ISLER_DOSYASI
         )
+
+        if self.hepsi_mi:
+
+            isler_indeksli = list(
+                enumerate(tum_isler)
+            )
+
+        else:
+
+            isler_indeksli = [
+                (i, is_)
+                for i, is_ in enumerate(tum_isler)
+                if bu_ay_mi(
+                    is_.get("tarih", ""),
+                    self.secili_yil,
+                    self.secili_ay
+                )
+            ]
+
+        isler = [
+            is_
+            for _, is_ in isler_indeksli
+        ]
 
         devam = 0
         bitti = 0
@@ -3445,13 +4455,13 @@ class Raporlar(Screen):
                 )
             )
 
-        for index in range(
-            len(isler) - 1,
+        for sira in range(
+            len(isler_indeksli) - 1,
             -1,
             -1
         ):
 
-            is_ = isler[index]
+            index, is_ = isler_indeksli[sira]
 
             is_adi = is_.get(
                 "is_adi",
@@ -3475,10 +4485,11 @@ class Raporlar(Screen):
                 is_
             )
 
-            alinacak = (
-                iscilik
-                + malzeme_toplami
-                - alinan
+            alinacak = alinacak_hesapla(
+                is_.get("malzemeli", True),
+                iscilik,
+                malzeme_toplami,
+                alinan
             )
 
             satirlar = [
@@ -3531,9 +4542,12 @@ class Raporlar(Screen):
 
                 kar_is = (
                     alinan
-                    - malzeme_toplami
                     - para(is_.get("gider", 0))
                 )
+
+                if is_.get("malzemeli", True):
+
+                    kar_is -= malzeme_toplami
 
                 satirlar.append(
                     "[color=33A64D][b]✅ Kâr: "
@@ -3880,6 +4894,12 @@ class IsTakipApp(App):
         ekranlar = ScreenManager()
 
         ekranlar.add_widget(
+            AcilisEkrani(
+                name="acilis"
+            )
+        )
+
+        ekranlar.add_widget(
             AnaSayfa(
                 name="ana"
             )
@@ -3926,6 +4946,8 @@ class IsTakipApp(App):
                 name="ayar"
             )
         )
+
+        ekranlar.current = "acilis"
 
         return ekranlar
 
