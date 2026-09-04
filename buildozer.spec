@@ -114,7 +114,7 @@ android.permissions = INTERNET,POST_NOTIFICATIONS,RECEIVE_BOOT_COMPLETED,WAKE_LO
 # Kamera fotoğrafını Android 7+'a "content://" adresi olarak
 # vermek için gereken FileProvider tanımı. Bu iki satır
 # olmadan kamera açılmaz / sessizce başarısız olur.
-android.extra_manifest_application_arguments = ./android_manifest_extra.xml
+# android.extra_manifest_application_arguments = ./android_manifest_extra.xml
 android.res_xml = file_paths.xml
 
 # FileProvider androidx.core.content.FileProvider sınıfını
