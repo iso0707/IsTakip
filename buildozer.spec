@@ -227,7 +227,7 @@ android.accept_sdk_license = True
 #android.add_resources =
 # Makbuz paylaşımı (FileProvider) için gerekli - proje köküne
 # eklenen android_extra/file_paths.xml dosyasını res/xml/'e koyar.
-android.add_resources = android_extra/file_paths.xml:xml/file_paths
+android.add_resources = android_extra/file_paths.xml:xml/file_paths.xml
 
 # (list) Gradle dependencies to add
 # ÖNEMLİ: android.enable_androidx = True TEK BAŞINA androidx.core
