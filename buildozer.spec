@@ -167,9 +167,14 @@ android.accept_sdk_license = True
 # (str) Extra xml to write directly inside the <manifest><application> tag of AndroidManifest.xml
 # use that parameter to provide a filename from where to load your custom XML arguments:
 #android.extra_manifest_application_arguments = ./src/android/extra_manifest_application_arguments.xml
-# Makbuz paylaşımı (FileProvider) için <provider> tanımını
-# AndroidManifest.xml'in <application> etiketi içine ekler.
-android.extra_manifest_application_arguments = android_extra/manifest_provider.xml
+# NOT: Bu secenek SADECE <application> etiketinin icine ekstra
+# ATTRIBUTE (ozellik) eklemek icindir (orn: android:foo="bar").
+# <provider> gibi bir ALT-ETIKET eklemek icin kullanilirsa
+# AndroidManifest.xml BOZULUR ve "processDebugMainManifest" /
+# ManifestMerger2 hatasi alinir. Bu yuzden FileProvider
+# <provider> tanimi artik asagidaki p4a.hook ile, derleme
+# sirasinda manifest dosyasina guvenli sekilde ekleniyor
+# (bkz. android_extra/hook.py).
 
 # (str) Full name including package path of the Java class that implements Python Service
 # use that parameter to set custom Java class which extends PythonService
@@ -222,7 +227,7 @@ android.extra_manifest_application_arguments = android_extra/manifest_provider.x
 #android.add_resources =
 # Makbuz paylaşımı (FileProvider) için gerekli - proje köküne
 # eklenen android_extra/file_paths.xml dosyasını res/xml/'e koyar.
-android.add_resources = android_extra/file_paths.xml:xml/file_paths.xml
+android.add_resources = android_extra/file_paths.xml:xml/file_paths
 
 # (list) Gradle dependencies to add
 # ÖNEMLİ: android.enable_androidx = True TEK BAŞINA androidx.core
@@ -373,6 +378,12 @@ android.allow_backup = True
 
 # (str) Filename to the hook for p4a
 #p4a.hook =
+# Makbuz paylasimi icin gereken FileProvider <provider> tanimini,
+# AndroidManifest.xml derleme sirasinda (gradle'dan ONCE) guvenli
+# sekilde ekleyen script. Dogrudan buildozer.spec secenekleriyle
+# <application> icine alt-etiket eklemenin bir yolu olmadigi icin
+# bu yontem kullaniliyor (bkz. yukaridaki not).
+p4a.hook = android_extra/hook.py
 
 # (str) Bootstrap to use for android builds
 # Run "buildozer android p4a -- bootstraps" for a list of valid values.
