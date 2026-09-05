@@ -43,11 +43,19 @@ jobs:
       - name: APK oluştur
         timeout-minutes: 45
         run: |
+          success=0
           for i in 1 2 3; do
             echo "Deneme $i..."
-            buildozer -v android debug && break
+            if buildozer -v android debug; then
+              success=1
+              break
+            fi
             if [ "$i" -lt 3 ]; then echo "Bekliyor..."; sleep 30; fi
           done
+          if [ "$success" -ne 1 ]; then
+            echo "Buildozer 3 denemede de basarisiz oldu!"
+            exit 1
+          fi
       - name: APK'yı yükle
         uses: actions/upload-artifact@v4
         with:
