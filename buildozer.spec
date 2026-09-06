@@ -6,7 +6,7 @@
 [app]
 
 # (str) Title of your application
-title = Bi&apos;tıkla İşim
+title = Bi'tıkla İşim
 
 # (str) Package name
 package.name = istakip
